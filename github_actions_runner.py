@@ -22,6 +22,7 @@ NXT_PAGE = "https://www.nextrade.co.kr/menu/marketData/menuList.do"
 NXT_API = "https://www.nextrade.co.kr/brdinfoTime/brdinfoTimeList.do"
 NAVER_QUOTE = "https://polling.finance.naver.com/api/realtime"
 KEYWORDS = ("계약", "공급", "수주", "단일판매", "유상증자", "무상증자", "합병", "인수", "특허", "승인", "허가", "투자", "자금조달", "최대주주")
+UPPER_LIMIT_THRESHOLD = 29.0
 
 
 def code(value: Any) -> str:
@@ -110,6 +111,43 @@ def fetch_quotes(codes: list[str]) -> dict[str, dict[str, Any]]:
     return quotes
 
 
+def fetch_latest_upper_limit_stocks(nxt: dict[str, str]) -> list[dict[str, Any]]:
+    try:
+        import FinanceDataReader as fdr
+    except ImportError as exc:
+        raise SystemExit("FinanceDataReader is required for morning upper-limit scan") from exc
+
+    frames = []
+    for market in ("KOSPI", "KOSDAQ"):
+        frame = fdr.StockListing(market)
+        if frame is not None and not frame.empty:
+            frames.append(frame)
+    if not frames:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for frame in frames:
+        for _, item in frame.iterrows():
+            c = code(item.get("Code"))
+            if c not in nxt:
+                continue
+            change_rate = num(item.get("ChagesRatio")) or 0
+            if change_rate < UPPER_LIMIT_THRESHOLD:
+                continue
+            rows.append(
+                {
+                    "stock_code": c,
+                    "stock_name": item.get("Name") or nxt.get(c, ""),
+                    "close": num(item.get("Close")),
+                    "change": num(item.get("Changes")),
+                    "change_rate": change_rate,
+                    "volume": num(item.get("Volume")),
+                    "trading_value": num(item.get("Amount")),
+                }
+            )
+    return sorted(rows, key=lambda x: x.get("change_rate") or 0, reverse=True)
+
+
 def news_reason(name: str, c: str) -> tuple[str, str]:
     q = f"{name} {c} 급등 이유"
     url = "https://search.naver.com/search.naver"
@@ -180,16 +218,87 @@ def save_reports(rows: list[dict[str, Any]], day: str) -> None:
     wb.save(out / f"{day}_nxt_candidates.xlsx")
 
 
+def telegram_enabled() -> bool:
+    return bool(os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"))
+
+
+def send_telegram(text: str) -> None:
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        print("Telegram secrets are missing; skipping Telegram send.")
+        return
+    response = requests.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data={
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": "true",
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+
+
+def format_report_message(rows: list[dict[str, Any]], day: str) -> str:
+    run_url = os.getenv("GITHUB_RUN_URL", "")
+    hot = [row for row in rows if (row.get("change_rate") or 0) >= 28]
+    lines = [
+        f"[NXT 공시/급등 스캐너] {day}",
+        f"후보: {len(rows)}개 / +28% 이상: {len(hot)}개",
+    ]
+    for row in rows[:10]:
+        rate = row.get("change_rate")
+        rate_text = f"{rate:.2f}%" if isinstance(rate, (int, float)) else "-"
+        lines.append(f"- {row.get('stock_name')}({row.get('stock_code')}): {rate_text} / {row.get('disclosure_title')}")
+    if run_url:
+        lines.append(f"결과 다운로드: {run_url}")
+    return "\n".join(lines)
+
+
+def format_upper_limit_message(rows: list[dict[str, Any]]) -> str:
+    today = datetime.now().strftime("%Y-%m-%d")
+    lines = [f"[전일 상한가 NXT 종목] {today} 07:00 점검"]
+    if not rows:
+        lines.append("전일 상한가권(+29% 이상) NXT 종목 없음")
+        return "\n".join(lines)
+    for row in rows:
+        rate = row.get("change_rate")
+        close = row.get("close")
+        rate_text = f"{rate:.2f}%" if isinstance(rate, (int, float)) else "-"
+        close_text = f"{close:,.0f}원" if isinstance(close, (int, float)) else "-"
+        lines.append(f"- {row.get('stock_name')}({row.get('stock_code')}): {rate_text}, 종가 {close_text}")
+    return "\n".join(lines)
+
+
+def run_morning_upper_limit() -> None:
+    nxt = fetch_nxt()
+    rows = fetch_latest_upper_limit_stocks(nxt)
+    out = Path("reports")
+    out.mkdir(exist_ok=True)
+    day = datetime.now().strftime("%Y-%m-%d")
+    (out / f"{day}_morning_upper_limit_nxt.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+    send_telegram(format_upper_limit_message(rows))
+    print(f"NXT={len(nxt)} upper_limit_nxt={len(rows)}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"))
+    p.add_argument("--mode", choices=("daily-report", "morning-upper-limit"), default="daily-report")
     args = p.parse_args()
+    if args.mode == "morning-upper-limit":
+        run_morning_upper_limit()
+        return
+
     nxt = fetch_nxt()
     disclosures = fetch_dart(args.date, nxt)
     filtered = [d for d in disclosures if any(k in d["disclosure_title"] for k in KEYWORDS)]
     quotes = fetch_quotes(sorted(set(nxt) | {d["stock_code"] for d in filtered}))
     rows = merge_rows(filtered, quotes)
     save_reports(rows, args.date)
+    if telegram_enabled():
+        send_telegram(format_report_message(rows, args.date))
     print(f"NXT={len(nxt)} disclosures={len(disclosures)} candidates={len(rows)}")
 
 
