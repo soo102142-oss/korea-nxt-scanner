@@ -1,0 +1,44 @@
+name: Morning NXT Upper Limit Telegram
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 07:00 KST = 22:00 UTC on the previous UTC day
+    - cron: "0 22 * * *"
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: scanner_requirements.txt
+
+      - name: Install scanner dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scanner_requirements.txt
+
+      - name: Run morning upper-limit notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TZ: Asia/Seoul
+        run: |
+          python github_actions_runner.py --mode morning-upper-limit
+
+      - name: Upload morning result
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning-upper-limit-nxt-${{ github.run_id }}
+          path: reports/*_morning_upper_limit_nxt.json
+          if-no-files-found: error
+          retention-days: 30
