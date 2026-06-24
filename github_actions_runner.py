@@ -153,9 +153,9 @@ def merge_rows(disclosures: list[dict[str, Any]], quotes: dict[str, dict[str, An
 def save_reports(rows: list[dict[str, Any]], day: str) -> None:
     out = Path("reports")
     out.mkdir(exist_ok=True)
-    cols = ["stock_code", "stock_name", "disclosure_time", "close", "change_rate", "trading_value", "disclosure_title", "reason", "source", "dart_url", "score"]
+    cols = ["stock_code", "stock_name", "disclosure_time", "close", "change", "change_rate", "volume", "trading_value", "disclosure_title", "reason", "source", "dart_url", "score"]
     with (out / f"{day}_nxt_candidates.csv").open("w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=cols)
+        w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
     (out / f"{day}_nxt_candidates.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -164,7 +164,7 @@ def save_reports(rows: list[dict[str, Any]], day: str) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "NXT candidates"
-    headers = ["종목코드", "종목명", "공시시간", "종가", "등락률", "거래대금", "공시/이벤트", "상승 이유", "출처", "DART", "점수"]
+    headers = ["종목코드", "종목명", "공시시간", "종가", "전일대비", "등락률", "거래량", "거래대금", "공시/이벤트", "상승 이유", "출처", "DART", "점수"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -175,7 +175,7 @@ def save_reports(rows: list[dict[str, Any]], day: str) -> None:
         if (r.get("change_rate") or 0) >= 28:
             for cell in ws[ws.max_row]:
                 cell.fill = hot
-    for i, width in enumerate([12, 18, 14, 12, 10, 16, 46, 46, 32, 48, 8], 1):
+    for i, width in enumerate([12, 18, 14, 12, 12, 10, 14, 16, 46, 46, 32, 48, 8], 1):
         ws.column_dimensions[get_column_letter(i)].width = width
     wb.save(out / f"{day}_nxt_candidates.xlsx")
 
