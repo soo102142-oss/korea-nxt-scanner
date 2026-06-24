@@ -2,11 +2,6 @@ name: Daily NXT Disclosure Scanner
 
 on:
   workflow_dispatch:
-    inputs:
-      target_date:
-        description: "Scan date in YYYY-MM-DD. Leave blank for today in Korea."
-        required: false
-        type: string
   schedule:
     # 19:00 KST = 10:00 UTC
     - cron: "0 10 * * *"
@@ -34,21 +29,18 @@ jobs:
 
       - name: Resolve target date
         id: date
-        env:
-          INPUT_DATE: ${{ inputs.target_date }}
         run: |
-          if [ -n "$INPUT_DATE" ]; then
-            echo "target_date=$INPUT_DATE" >> "$GITHUB_OUTPUT"
-          else
-            echo "target_date=$(TZ=Asia/Seoul date +%F)" >> "$GITHUB_OUTPUT"
-          fi
+          echo "target_date=$(TZ=Asia/Seoul date +%F)" >> "$GITHUB_OUTPUT"
 
       - name: Run scanner
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TZ: Asia/Seoul
         run: |
-          python github_actions_runner.py --date "${{ steps.date.outputs.target_date }}"
+          python github_actions_runner.py --mode daily-report --date "${{ steps.date.outputs.target_date }}"
 
       - name: Upload reports
         uses: actions/upload-artifact@v4
