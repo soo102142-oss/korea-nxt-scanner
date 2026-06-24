@@ -25,6 +25,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: scanner_requirements.txt
 
       - name: Install scanner dependencies
         run: |
