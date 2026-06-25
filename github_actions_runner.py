@@ -22,7 +22,7 @@ NXT_PAGE = "https://www.nextrade.co.kr/menu/marketData/menuList.do"
 NXT_API = "https://www.nextrade.co.kr/brdinfoTime/brdinfoTimeList.do"
 NAVER_QUOTE = "https://polling.finance.naver.com/api/realtime"
 KEYWORDS = ("계약", "공급", "수주", "단일판매", "유상증자", "무상증자", "합병", "인수", "특허", "승인", "허가", "투자", "자금조달", "최대주주")
-UPPER_LIMIT_THRESHOLD = 29.0
+UPPER_LIMIT_THRESHOLD = 25.0
 
 
 def code(value: Any) -> str:
@@ -262,10 +262,10 @@ def format_upper_limit_message(rows: list[dict[str, Any]], total_upper_limit_cou
     today = datetime.now().strftime("%Y-%m-%d")
     lines = [
         f"[전일 상한가 NXT 종목] {today} 07:00 점검",
-        f"전체 상한가권(+{UPPER_LIMIT_THRESHOLD:.0f}% 이상): {total_upper_limit_count}개 / NXT: {len(rows)}개",
+        f"전체 급등/상한가권(+{UPPER_LIMIT_THRESHOLD:.0f}% 이상): {total_upper_limit_count}개 / NXT: {len(rows)}개",
     ]
     if not rows:
-        lines.append("전일 상한가권 NXT 종목 없음")
+        lines.append("전일 급등/상한가권 NXT 종목 없음")
         return "\n".join(lines)
     for row in rows:
         rate = row.get("change_rate")
