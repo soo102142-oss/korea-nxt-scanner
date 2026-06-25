@@ -16,14 +16,15 @@ Korean stock scanner for NXT-listed stocks using DART disclosures, Naver Finance
 
 Add these repository secrets:
 
-- `DART_API_KEY`: required for the 19:00 daily DART scanner.
+- `DART_API_KEY`: required for the 06:00 daily DART scanner.
 - `TELEGRAM_BOT_TOKEN`: optional but required for Telegram messages.
 - `TELEGRAM_CHAT_ID`: optional but required for Telegram messages.
 
 ## Schedules
 
-- `Daily NXT Disclosure Scanner`: every day at 19:00 KST. Manual run starts immediately and automatically uses today's Korean date.
-- `Morning NXT Upper Limit Telegram`: every day at 07:00 KST. It checks the latest available KRX listing data, filters stocks up at least 29%, keeps only NXT-listed stocks, and sends Telegram regardless of DART disclosure status.
+- `Daily NXT Disclosure Scanner`: every day at 06:00 KST. Telegram is sent as soon as the scan finishes, with enough buffer before 07:30 KST under normal GitHub Actions scheduling.
+- `Morning NXT Upper Limit Telegram`: every day at 07:00 KST. It checks the latest available KRX listing data, filters stocks up at least 25%, keeps only NXT-listed stocks, and sends Telegram regardless of DART disclosure status.
+- Manual runs start immediately and automatically use today's Korean date.
 
 ## Outputs
 
