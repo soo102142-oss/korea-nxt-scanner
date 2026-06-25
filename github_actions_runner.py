@@ -111,7 +111,7 @@ def fetch_quotes(codes: list[str]) -> dict[str, dict[str, Any]]:
     return quotes
 
 
-def fetch_latest_upper_limit_stocks(nxt: dict[str, str]) -> list[dict[str, Any]]:
+def fetch_latest_upper_limit_stocks(nxt: dict[str, str]) -> tuple[list[dict[str, Any]], int]:
     try:
         import FinanceDataReader as fdr
     except ImportError as exc:
@@ -123,16 +123,18 @@ def fetch_latest_upper_limit_stocks(nxt: dict[str, str]) -> list[dict[str, Any]]
         if frame is not None and not frame.empty:
             frames.append(frame)
     if not frames:
-        return []
+        return [], 0
 
     rows: list[dict[str, Any]] = []
+    total_upper_limit_count = 0
     for frame in frames:
         for _, item in frame.iterrows():
-            c = code(item.get("Code"))
-            if c not in nxt:
-                continue
             change_rate = num(item.get("ChagesRatio")) or 0
             if change_rate < UPPER_LIMIT_THRESHOLD:
+                continue
+            total_upper_limit_count += 1
+            c = code(item.get("Code"))
+            if c not in nxt:
                 continue
             rows.append(
                 {
@@ -145,7 +147,7 @@ def fetch_latest_upper_limit_stocks(nxt: dict[str, str]) -> list[dict[str, Any]]
                     "trading_value": num(item.get("Amount")),
                 }
             )
-    return sorted(rows, key=lambda x: x.get("change_rate") or 0, reverse=True)
+    return sorted(rows, key=lambda x: x.get("change_rate") or 0, reverse=True), total_upper_limit_count
 
 
 def news_reason(name: str, c: str) -> tuple[str, str]:
@@ -256,11 +258,14 @@ def format_report_message(rows: list[dict[str, Any]], day: str) -> str:
     return "\n".join(lines)
 
 
-def format_upper_limit_message(rows: list[dict[str, Any]]) -> str:
+def format_upper_limit_message(rows: list[dict[str, Any]], total_upper_limit_count: int) -> str:
     today = datetime.now().strftime("%Y-%m-%d")
-    lines = [f"[전일 상한가 NXT 종목] {today} 07:00 점검"]
+    lines = [
+        f"[전일 상한가 NXT 종목] {today} 07:00 점검",
+        f"전체 상한가권(+{UPPER_LIMIT_THRESHOLD:.0f}% 이상): {total_upper_limit_count}개 / NXT: {len(rows)}개",
+    ]
     if not rows:
-        lines.append("전일 상한가권(+29% 이상) NXT 종목 없음")
+        lines.append("전일 상한가권 NXT 종목 없음")
         return "\n".join(lines)
     for row in rows:
         rate = row.get("change_rate")
@@ -273,13 +278,20 @@ def format_upper_limit_message(rows: list[dict[str, Any]]) -> str:
 
 def run_morning_upper_limit() -> None:
     nxt = fetch_nxt()
-    rows = fetch_latest_upper_limit_stocks(nxt)
+    rows, total_upper_limit_count = fetch_latest_upper_limit_stocks(nxt)
     out = Path("reports")
     out.mkdir(exist_ok=True)
     day = datetime.now().strftime("%Y-%m-%d")
-    (out / f"{day}_morning_upper_limit_nxt.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
-    send_telegram(format_upper_limit_message(rows))
-    print(f"NXT={len(nxt)} upper_limit_nxt={len(rows)}")
+    payload = {
+        "date": day,
+        "threshold": UPPER_LIMIT_THRESHOLD,
+        "total_upper_limit_count": total_upper_limit_count,
+        "nxt_upper_limit_count": len(rows),
+        "rows": rows,
+    }
+    (out / f"{day}_morning_upper_limit_nxt.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    send_telegram(format_upper_limit_message(rows, total_upper_limit_count))
+    print(f"NXT={len(nxt)} total_upper_limit={total_upper_limit_count} upper_limit_nxt={len(rows)}")
 
 
 def main() -> None:
