@@ -3,8 +3,8 @@ name: Daily NXT Disclosure Scanner
 on:
   workflow_dispatch:
   schedule:
-    # 19:00 KST = 10:00 UTC
-    - cron: "0 10 * * *"
+    # 06:00 KST = 21:00 UTC on the previous UTC day
+    - cron: "0 21 * * *"
 
 jobs:
   scan:
